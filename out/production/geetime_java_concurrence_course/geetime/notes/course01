@@ -1,0 +1,55 @@
+# 01|可见性、原子性和有序性问题：并发编程的源头
+编写正确的并发程序是一件极其困难的事情，并发程序的bug往往会诡异的出现，又会诡异的消失，很难重现，也很难追踪。
+正确解决方法是溯源。  
+为合理利用cpu高性能，平衡cpu io 内存之间的速度差距：  
+1. 计算机体系结构方面：　增加了cpu缓存，　均衡cpu与内存之间的速度差异。   
+2. 操作系统: 增加进程、线程等分时复用技术，均衡cpu与io之间的速度差异，提高cpu的利用率。  
+3. 编译器方面：　优化指令执行次序，使缓存能够更合理地利用。  
+
+# 源头之一：　缓存导致的可见性问题
+## 定义：
+可见性：　一个线程对共享变量的修改，另一个线程能够立刻看到。  
+
+## 可见性问题原因
+对于单核，所有线程操作是同一个cpu缓存，因而缓存与内存之间的一致性很容易保证。  
+对于多核， 在不同cpu内核上执行的线程使用的是不同的cpu缓存。一个线程对同一变量执行的操作，对另一线程而言就不具可见性。  
+
+## 具体例子
+### 代码
+```java
+public class Course01 {
+    private long count = 0;
+    private void add1Billion(){
+        // 当数据为1w, 10w时结果可能正确，因为不同的线程启动有一个时间差，
+        // 而在这个时间差之内，一个线程的加法操作可能已经完成。
+        // 而当数据逐渐增大时，发生缓存可见性问题的可能性变大
+        for(int i = 0; i < 1000000000; i++){
+            count ++;
+        }
+    }
+
+    public static long calc(){
+        final Course01 course01 = new Course01();
+        // 启动两个线程对同一个变量进行加法操作
+        Thread thread1 = new Thread(() -> course01.add1Billion());
+        Thread thread2 = new Thread(() -> course01.add1Billion());
+        thread1.start();
+        thread2.start();
+        try {
+            //　等待两个线程的结束
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return course01.getCount();
+    }
+
+    public long getCount() {
+        return count;
+    }
+}
+```
+### 分析
+当两个线程的同时对count进行操作时，会从内存中将count的副本读入各自的cpu缓存，此时这两个线程对各自的
+count副本进行操作，进行加一操作分别写回内存，从而内存得到的结果是１，而不是２。从而引发缓存的可见性问题。
